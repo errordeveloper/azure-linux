@@ -2,13 +2,13 @@
 
 This tutorial is part of [P@'s Linux on Azure series](/../../).
 
-[Weave](https://github.com/zettio/weave#readme) is an open source project to create "a virtual network that connects Docker containers deployed across multiple hosts". It allows you to create a virtual network across different clouds.
+[Weave](https://github.com/zettio/weave#readme) is an open source project to create _"a virtual network that connects Docker containers deployed across multiple hosts"_. It allows you to create a virtual network across different clouds.
 
 <img src="https://raw.githubusercontent.com/zettio/weave/master/docs/virtual-network.png"/>
 
 The technical approach of this tutorial was inspired by the Weave blog article [Automated provisioning of multi-cloud weave network with Terraform](http://weaveblog.com/2014/12/18/automated-provisioning-of-multi-cloud-weave-network-terraform/), where they deploy a Weave network across AWS and Google Cloud Platform.
 
-Since there is not yet a Terraform driver for Microsoft Azure, I'm using the azure-coreos-cluster script, with a post processing step.
+Since there is not yet a Terraform driver for Microsoft Azure, I'm using the `azure-coreos-cluster` script, with a post processing step.
 
 ## Deploying a CoreOS cluster for Weave
 
@@ -16,53 +16,55 @@ To deploy the cluster, you will use the [Azure CoreOS cluster deployment script]
 
 In order to install Weave on the cluster, you need to deploy the cluster using the [Weave cloud-init file in this directory](../weave/weave.yml).
 
-You also need to use the --attach-drive option of the cluster provisioning script: the cloud-init file will mount that external drive to /var/lib/docker. This ensures a better performance for Docker, and allows the docker image cache to survive reboots.
+You also need to use the `--attach-drive` option of the cluster provisioning script: the cloud-init file will mount that external drive to `/var/lib/docker`. This ensures a better performance for Docker, and allows the docker image cache to survive reboots.
 
-Before launching the command, edit weave.yml and add discovery usl, generated using https://discovery.etcd.io/new.
+Before launching the command, edit `weave.yml` and add discovery URL, generated using https://discovery.etcd.io/new.
 
 When it starts, Weave needs the list of all ip addresses for machines in the cluster. In order to configure this, the cloud-init file specifies an environment file where these ip addresses are specified, as well as the weave password, and dns address.
 ```
 [Service]
 EnvironmentFile=/etc/weave.env
-ExecStartPre=/opt/bin/weave launch -password ${WEAVE_PASSWORD} $WEAVE_PEERS
+ExecStartPre=/opt/bin/weave launch $WEAVE_PEERS
 ExecStartPre=/opt/bin/weave launch-dns $WEAVEDNS_ADDR -debug
 ```
 
-When provisioning the cluster, we don't know these ip addresses yet. So we will use the --ouput option of the cluster deployment tool, which will generate a json cluster state file containing metadata about the cluster. The useful metadata here is the list of machines, ssh ports, path to ssh certificate and unix user for the cluster. We will use this cluster state file in a post processing script after the cluster is deployed.
+When provisioning the cluster, we don't know these ip addresses yet. So we will use the `--ouput` option of the cluster deployment tool, which will generate a JSON cluster state file containing metadata about the cluster. The useful metadata here is the list of machines, ssh ports, path to ssh certificate and unix user for the cluster. We will use this cluster state file in a post processing script after the cluster is deployed.
 
 Deploy the cluster with a command like this, from the cluster directory of this repository:
 ```
 ./azure-coreos-cluster pat-coreos-cloud-service \
---ssh-cert ~/.ssh/ssh-cert.cer \
---ssh-thumb 44EF1BA225BE64154F7A55826CE56EA398C365B5 \
---subscription 9b5910a1-...-8e79d5ea2841 \
---azure-cert ~/.azure/azure-cert.pem \
---num-nodes 5 \
---location "West US" \
---vm-size Large \
---custom-data ../weave/weave.yml \
---blob-container-url https://patcoreos.blob.core.windows.net/vhds/ \
---data-disk \
---output
+    --ssh-cert ~/.ssh/ssh-cert.cer \
+    --ssh-thumb 44EF1BA225BE64154F7A55826CE56EA398C365B5 \
+    --subscription 9b5910a1-...-8e79d5ea2841 \
+    --azure-cert ~/.azure/azure-cert.pem \
+    --num-nodes 5 \
+    --location "West US" \
+    --vm-size Large \
+    --custom-data ../weave/weave.yml \
+    --blob-container-url https://patcoreos.blob.core.windows.net/vhds/ \
+    --data-disk \
+    --output
 ```
 
-This will generate a cluster state file in the current directory under the default name [cloud-service-name].json. You can also specify your own name for it as the --output parameter. This state file contains all the args used in the cluster script to create the cluster, all the ip addresses, and the informations allowing to ssh into each of the cluster's machines. Here is [a sample cluster state file](../cluster/pat-coreos-cloud-service.json).
+This will generate a cluster state file in the current directory under the default name `[cloud-service-name].json`. You can also specify your own name for it as the --output parameter. This state file contains all the args used in the cluster script to create the cluster, all the ip addresses, and the informations allowing to ssh into each of the cluster's machines. Here is [a sample cluster state file](../cluster/pat-coreos-cloud-service.json).
 
 Before running the post processing script, check in the Azure console that all instances of the cluster have finished deploying and are in running state.
 
 ## Post processing
 
-The post processing script, in the cluster directory, [azure-coreos-weave](../cluster/azure-coreos-weave), takes the cloud service name as a parameter. It will look for a state file named [cloud-service-name].json in the current directory.
+The post processing script, in the cluster directory, [azure-coreos-weave](../cluster/azure-coreos-weave), takes the cloud service name as a parameter. It will look for a state file named `[cloud-service-name].json` in the current directory.
 
-You can pass to it an optional parameter --weave-password. If not, it will use the default 'f00bar' password.
+You can pass to it an optional parameter `--weave-password`. If not, it will use the default 'f00bar' password.
 
-This script will ssh into every instance, using information from the state file, create the /etc/weave.env file defining $WEAVE_PASSWORD $WEAVE_PEERS and $WEAVEDNS_ADDR environment variables. By default it uses 10.10.1.1{i}/16 where i is the index number for the instance in the cluster. You can modify this in the script if needed. Then it will restart the weave service on each machine in the cluster: ```sudo systemctl restart weave.service```
+This script will ssh into every instance, using information from the state file, create the `/etc/weave.env` file defining `$WEAVE_PASSWORD`, `$WEAVE_PEERS` and `$WEAVEDNS_ADDR` environment variables. By default it uses `10.10.1.1{i}/16` where `i` is the index number for the instance in the cluster. You can modify this in the script if needed. Then it will restart the weave service on each machine in the cluster: `sudo systemctl restart weave.service`
 
+```
 ./azure-coreos-weave pat-coreos-cloud-service
+```
 
 ## Adding machines to the cluster
 
-You would need to tweak the azure-coreos-cluster script to add machines to the cluster. If you do, for weave configuration, you don't need to modify all the environment files: you can add [new machines to the network](http://zettio.github.io/weave/features.html#dynamic-topologies) by running weave on the new machine passing to it one of the existing peers. Or you can run ```weave connect $NEW_HOST``` on one of the existing hosts, where $NEW_HOST is the ip of the host you added.
+You would need to tweak the azure-coreos-cluster script to add machines to the cluster. If you do, for weave configuration, you don't need to modify all the environment files: you can add [new machines to the network](http://zettio.github.io/weave/features.html#dynamic-topologies) by running weave on the new machine passing to it one of the existing peers. Or you can run `weave connect $NEW_HOST` on one of the existing hosts, where `$NEW_HOST` is the IP of the host you added.
 
 ## Testing Weave status
 
@@ -110,7 +112,7 @@ Reconnects:
 
 ## Testing weave dns service
 
-[According to WeaveDNS documentation](https://github.com/zettio/weave/tree/master/weavedns#using-weavedns) you need to add the --with-dns flag to weave for the container to use the WeaveDNS, and giving any container a hostname in the .weave.local domain registers it in weaveDNS.
+[According to WeaveDNS documentation](https://github.com/zettio/weave/tree/master/weavedns#using-weavedns) you need to add the `--with-dns` flag to weave for the container to use the WeaveDNS, and giving any container a hostname in the `.weave.local` domain registers it in WeaveDNS.
 
 Let's ssh to 2 of our cluster machines and do the following:
 ```
@@ -131,7 +133,7 @@ Status: Downloaded newer image for ubuntu:latest
 604f8137c6485015f8b96ca6dd8aa3b8f827646b9cc2c6f2d087c1d1267b1ecf
 ```
 
-Then on the first machine
+Then on the first machine:
 ```
 sudo docker attach bb7299787b14975d70eb3cd04016c5a0ae34b35d7b8ea7fa49f428062969a0a1
 root@p1:/# ping p2.weave.local
