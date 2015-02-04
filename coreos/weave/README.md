@@ -24,8 +24,8 @@ When it starts, Weave needs the list of all ip addresses for machines in the clu
 ```
 [Service]
 EnvironmentFile=/etc/weave.env
-ExecStartPre=/opt/bin/weave launch -password ${WEAVE_LAUNCH_PASSWORD} $WEAVE_LAUNCH_KNOW_NODES
-ExecStartPre=/opt/bin/weave launch-dns $WEAVE_LAUNCH_DNS_ARGS -debug
+ExecStartPre=/opt/bin/weave launch -password ${WEAVE_PASSWORD} $WEAVE_PEERS
+ExecStartPre=/opt/bin/weave launch-dns $WEAVEDNS_ADDR -debug
 ```
 
 When provisioning the cluster, we don't know these ip addresses yet. So we will use the --ouput option of the cluster deployment tool, which will generate a json cluster state file containing metadata about the cluster. The useful metadata here is the list of machines, ssh ports, path to ssh certificate and unix user for the cluster. We will use this cluster state file in a post processing script after the cluster is deployed.
@@ -56,7 +56,7 @@ The post processing script, in the cluster directory, [azure-coreos-weave](../cl
 
 You can pass to it an optional parameter --weave-password. If not, it will use the default 'f00bar' password.
 
-This script will ssh into every instance, using information from the state file, create the /etc/weave.env file defining $WEAVE_LAUNCH_PASSWORD $WEAVE_LAUNCH_KNOW_NODES and $WEAVE_LAUNCH_DNS_ARGS environment variables. By default it uses 10.10.1.1{i}/16 where i is the index number for the instance in the cluster. You can modify this in the script if needed. Then it will restart the weave service on each machine in the cluster: ```sudo systemctl restart weave.service```
+This script will ssh into every instance, using information from the state file, create the /etc/weave.env file defining $WEAVE_PASSWORD $WEAVE_PEERS and $WEAVEDNS_ADDR environment variables. By default it uses 10.10.1.1{i}/16 where i is the index number for the instance in the cluster. You can modify this in the script if needed. Then it will restart the weave service on each machine in the cluster: ```sudo systemctl restart weave.service```
 
 ./azure-coreos-weave pat-coreos-cloud-service
 
